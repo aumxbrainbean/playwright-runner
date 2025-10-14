@@ -1,5 +1,5 @@
 # ✅ Use the official Playwright image (includes Chromium, Firefox, WebKit)
-FROM mcr.microsoft.com/playwright:v1.47.0-focal
+FROM mcr.microsoft.com/playwright:v1.56.0-focal
 
 # Set working directory
 WORKDIR /app
