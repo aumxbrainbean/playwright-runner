@@ -4,14 +4,24 @@ const { chromium } = require("playwright");
 const app = express();
 app.use(express.json());
 
-app.get("/", (req, res) => res.send("✅ Playwright Runner is live!"));
+// Health check
+app.get("/", (req, res) => {
+  res.send("✅ Playwright Runner is live!");
+});
 
+// Main API route
 app.post("/run-test", async (req, res) => {
   try {
     const { url } = req.body;
-    if (!url) return res.status(400).json({ error: "Missing 'url' in request body" });
+    if (!url) {
+      return res.status(400).json({ success: false, error: "Missing 'url' in request body" });
+    }
 
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    });
+
     const page = await browser.newPage();
     await page.goto(url);
 
@@ -31,5 +41,6 @@ app.post("/run-test", async (req, res) => {
   }
 });
 
+// Use Render's assigned port
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Server running on port ${PORT}`));
