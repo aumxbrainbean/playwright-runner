@@ -12,13 +12,11 @@ app.get("/", (req, res) => {
 
 // ✅ Full test flow for https://playwright.dev.brainbean.us/
 app.post("/run-brainbean-test", async (req, res) => {
-  // Base URL for your dev site
   const baseUrl = "https://playwright.dev.brainbean.us";
   const pages = ["/", "/shop/", "/about/", "/contact/"];
   const results = [];
 
   try {
-    // Launch Chromium
     const browser = await chromium.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"]
@@ -26,7 +24,6 @@ app.post("/run-brainbean-test", async (req, res) => {
 
     const context = await browser.newContext();
 
-    // Iterate through pages
     for (const path of pages) {
       const page = await context.newPage();
       const fullUrl = `${baseUrl}${path}`;
@@ -36,25 +33,48 @@ app.post("/run-brainbean-test", async (req, res) => {
       let error = null;
       let screenshot = null;
       let loadTime = 0;
+      let status = 0;
 
       console.log(`🔎 Visiting ${fullUrl}`);
 
       try {
-        // Capture console errors
-        page.on("console", msg => {
-          if (msg.type() === "error") {
-            console.log(`⚠️ JS Error on ${fullUrl}:`, msg.text());
-          }
+        let response = await page.goto(fullUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 60000
         });
 
-        // Visit the page
-        await page.goto(fullUrl, { waitUntil: "networkidle", timeout: 60000 });
         loadTime = Date.now() - start;
-        console.log(`✅ Loaded ${fullUrl} in ${loadTime}ms`);
+        status = response ? response.status() : 0;
 
-        results.push({ url: fullUrl, success, loadTime });
+        // Check for HTTP error codes
+        if (status >= 400) {
+          success = false;
+          error = `HTTP ${status}`;
+        } else {
+          // Check for "soft 404" (content says 404 but HTTP = 200)
+          const pageTitle = (await page.title()) || "";
+          const bodyText = await page.textContent("body");
+
+          if (
+            pageTitle.match(/404|not found/i) ||
+            bodyText.match(/404|page not found/i)
+          ) {
+            success = false;
+            error = "Soft 404 detected in page content";
+          }
+        }
+
+        // Take screenshot only if failed
+        if (!success) {
+          screenshot = await page.screenshot({ encoding: "base64" });
+          console.warn(`⚠️ ${fullUrl} flagged as failure: ${error}`);
+        } else {
+          console.log(`✅ ${fullUrl} OK in ${loadTime}ms (status ${status})`);
+        }
+
+        results.push({ url: fullUrl, success, status, error, loadTime, screenshot });
       } catch (err) {
-        console.error(`❌ Failed: ${fullUrl}`, err.message);
+        console.error(`❌ Navigation failed for ${fullUrl}:`, err.message);
         success = false;
         error = err.message;
         screenshot = await page.screenshot({ encoding: "base64" });
@@ -67,31 +87,19 @@ app.post("/run-brainbean-test", async (req, res) => {
 
     await browser.close();
 
-    // Build final JSON report
-    const report = {
+    res.json({
       success: true,
       site: baseUrl,
       testedPages: pages.length,
       timestamp: new Date().toISOString(),
       results
-    };
-
-    // Save report to file (optional)
-    try {
-      fs.writeFileSync(
-        `report-${Date.now()}.json`,
-        JSON.stringify(report, null, 2)
-      );
-    } catch (err) {
-      console.warn("⚠️ Could not save report:", err.message);
-    }
-
-    res.json(report);
+    });
   } catch (err) {
     console.error("Runner error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 // ✅ Generic site audit route (optional for any site)
 app.post("/run-site-audit", async (req, res) => {
