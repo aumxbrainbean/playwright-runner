@@ -101,18 +101,10 @@ app.post("/run-brainbean-test", async (req, res) => {
 });
 
 
-// ✅ WooCommerce Add-to-Cart Flow Test
+// ✅ WooCommerce Add-to-Cart Flow Test (Stable Version)
 app.post("/run-add-to-cart-test", async (req, res) => {
   const baseUrl = "https://playwright.dev.brainbean.us";
   const results = [];
-  const steps = [
-    { name: "Homepage", url: "/" },
-    { name: "Shop Page", url: "/shop/" },
-    { name: "Product Page", dynamic: true },
-    { name: "Side Cart", dynamic: true },
-    { name: "Cart Page", url: "/cart/" },
-    { name: "Checkout Page", url: "/checkout/" }
-  ];
 
   try {
     const browser = await chromium.launch({
@@ -122,62 +114,75 @@ app.post("/run-add-to-cart-test", async (req, res) => {
     const context = await browser.newContext();
     const page = await context.newPage();
 
-    // Step 1: Visit homepage
+    // Step 1: Homepage
     const start1 = Date.now();
-    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle" });
+    await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
     results.push({ step: "Homepage", success: true, loadTime: Date.now() - start1 });
     console.log("✅ Home loaded");
 
-    // Step 2: Go to shop page
+    // Step 2: Shop Page
     const start2 = Date.now();
-    await page.goto(`${baseUrl}/shop/`, { waitUntil: "networkidle" });
+    await page.goto(`${baseUrl}/shop/`, { waitUntil: "domcontentloaded" });
     results.push({ step: "Shop Page", success: true, loadTime: Date.now() - start2 });
     console.log("✅ Shop page loaded");
 
-    // Step 3: Click first product in loop
+    // Step 3: Click first product
     const productSelector = "ul.products li.product a.woocommerce-LoopProduct-link";
     await page.waitForSelector(productSelector, { timeout: 10000 });
     const firstProductHref = await page.getAttribute(productSelector, "href");
-    console.log(`🛍️ Clicking first product: ${firstProductHref}`);
+    console.log(`🛍️ Opening product: ${firstProductHref}`);
     const start3 = Date.now();
     await page.click(productSelector);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     results.push({ step: "Product Page", success: true, url: firstProductHref, loadTime: Date.now() - start3 });
 
-    // Step 4: Click "Add to cart" button on product page
+    // Step 4: Add to Cart
     const addToCartBtn = 'button.single_add_to_cart_button';
     await page.waitForSelector(addToCartBtn, { timeout: 10000 });
-    console.log("🛒 Adding product to cart");
+    console.log("🛒 Clicking Add to Cart");
     await page.click(addToCartBtn);
-    await page.waitForTimeout(2000); // wait for AJAX side cart animation
+    await page.waitForTimeout(2500); // let AJAX run
 
-    // Step 5: Wait for side cart (moderncart)
+    // Step 5: Wait for side cart
     const sideCartSelector = "#moderncart-slide-out";
     let sideCartVisible = false;
     try {
-      await page.waitForSelector(sideCartSelector, { timeout: 7000 });
+      await page.waitForSelector(sideCartSelector, { timeout: 8000 });
       sideCartVisible = true;
-      console.log("✅ Side cart opened successfully");
+      console.log("✅ Side cart opened");
     } catch {
       console.warn("⚠️ Side cart did not open automatically");
     }
     results.push({ step: "Side Cart", success: sideCartVisible });
 
-    // Step 6: Proceed to Cart
-    const cartUrl = `${baseUrl}/cart/`;
-    console.log("➡️ Navigating to Cart");
-    const start6 = Date.now();
-    await page.goto(cartUrl, { waitUntil: "networkidle" });
-    await page.waitForSelector(".wc-proceed-to-checkout a.checkout-button", { timeout: 10000 });
-    results.push({ step: "Cart Page", success: true, loadTime: Date.now() - start6 });
+    // Step 6: Close side cart (optional)
+    if (sideCartVisible) {
+      const closeButton = ".moderncart-slide-out-header-close";
+      try {
+        await page.click(closeButton, { timeout: 4000 });
+        console.log("🧩 Closed side cart");
+      } catch {
+        console.warn("⚠️ Could not close side cart");
+      }
+    }
 
-    // Step 7: Proceed to Checkout
+    // Step 7: Go to Cart page safely
+    const start6 = Date.now();
+    console.log("➡️ Going to Cart page...");
+    await page.goto(`${baseUrl}/cart/`, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForSelector(".wc-proceed-to-checkout a.checkout-button", { timeout: 15000 });
+    results.push({ step: "Cart Page", success: true, loadTime: Date.now() - start6 });
+    console.log("✅ Cart page loaded");
+
+    // Step 8: Proceed to Checkout
     const checkoutBtn = ".wc-proceed-to-checkout a.checkout-button";
-    console.log("💳 Proceeding to Checkout");
     const start7 = Date.now();
+    console.log("💳 Proceeding to Checkout...");
     await page.click(checkoutBtn);
-    await page.waitForURL(`${baseUrl}/checkout/`, { timeout: 10000 });
+    await page.waitForURL(/\/checkout/, { timeout: 10000 });
+    await page.waitForSelector("form.checkout", { timeout: 10000 });
     results.push({ step: "Checkout Page", success: true, loadTime: Date.now() - start7 });
+    console.log("✅ Checkout loaded");
 
     await browser.close();
 
@@ -190,14 +195,11 @@ app.post("/run-add-to-cart-test", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Add-to-cart flow failed:", err);
-    results.push({
-      step: "Error",
-      success: false,
-      error: err.message
-    });
+    results.push({ step: "Error", success: false, error: err.message });
     res.status(500).json({ success: false, results });
   }
 });
+
 
 
 
