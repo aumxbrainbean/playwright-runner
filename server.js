@@ -101,7 +101,7 @@ app.post("/run-brainbean-test", async (req, res) => {
 });
 
 
-// ✅ WooCommerce Add-to-Cart → Checkout → Place Order Flow Test
+// ✅ WooCommerce Login → Add-to-Cart → Checkout → Place Order Flow
 app.post("/run-add-to-cart-test", async (req, res) => {
   const baseUrl = "https://playwright.dev.brainbean.us";
   const results = [];
@@ -120,30 +120,60 @@ app.post("/run-add-to-cart-test", async (req, res) => {
     results.push({ step: "Homepage", success: true, loadTime: Date.now() - start1 });
     console.log("✅ Home loaded");
 
-    // Step 2: Shop Page
+    // Step 2: Login Page
+    console.log("🔐 Navigating to My Account page...");
+    const startLogin = Date.now();
+    await page.goto(`${baseUrl}/my-account/`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("form.woocommerce-form-login", { timeout: 10000 });
+
+    // Step 3: Fill login form
+    console.log("🧾 Filling login credentials...");
+    await page.fill("#username", "playwright");
+    await page.fill("#password", "&HhmXDaq*$r9rNWSPYa$SQGk");
+    await page.click('button[name="login"]');
+
+    // Step 4: Confirm login success (via body.logged-in)
+    let loginSuccess = false;
+    try {
+      await page.waitForFunction(
+        () => document.body.classList.contains("logged-in"),
+        { timeout: 15000 }
+      );
+      loginSuccess = true;
+      console.log("✅ Successfully logged in — 'logged-in' class detected.");
+    } catch {
+      console.warn("⚠️ Login check failed — user not logged in.");
+    }
+
+    if (!loginSuccess) throw new Error("Login failed — stopping flow.");
+
+    results.push({ step: "Login", success: loginSuccess, loadTime: Date.now() - startLogin });
+
+    // Step 5: Shop Page
     const start2 = Date.now();
+    console.log("🛍️ Opening Shop page...");
     await page.goto(`${baseUrl}/shop/`, { waitUntil: "domcontentloaded" });
     results.push({ step: "Shop Page", success: true, loadTime: Date.now() - start2 });
     console.log("✅ Shop page loaded");
 
-    // Step 3: Click first product
+    // Step 6: Click first product
     const productSelector = "ul.products li.product a.woocommerce-LoopProduct-link";
     await page.waitForSelector(productSelector, { timeout: 10000 });
     const firstProductHref = await page.getAttribute(productSelector, "href");
-    console.log(`🛍️ Opening product: ${firstProductHref}`);
+    console.log(`🛒 Opening product: ${firstProductHref}`);
     const start3 = Date.now();
     await page.click(productSelector);
     await page.waitForLoadState("domcontentloaded");
     results.push({ step: "Product Page", success: true, url: firstProductHref, loadTime: Date.now() - start3 });
 
-    // Step 4: Add to Cart
+    // Step 7: Add to Cart
     const addToCartBtn = 'button.single_add_to_cart_button';
     await page.waitForSelector(addToCartBtn, { timeout: 10000 });
-    console.log("🛒 Clicking Add to Cart");
+    console.log("🛍️ Adding product to cart...");
     await page.click(addToCartBtn);
-    await page.waitForTimeout(2500); // let AJAX run
+    await page.waitForTimeout(3000);
 
-    // Step 5: Wait for side cart
+    // Step 8: Wait for side cart
     const sideCartSelector = "#moderncart-slide-out";
     let sideCartVisible = false;
     try {
@@ -155,7 +185,7 @@ app.post("/run-add-to-cart-test", async (req, res) => {
     }
     results.push({ step: "Side Cart", success: sideCartVisible });
 
-    // Step 6: Close side cart (optional)
+    // Step 9: Close side cart
     if (sideCartVisible) {
       const closeButton = ".moderncart-slide-out-header-close";
       try {
@@ -166,15 +196,15 @@ app.post("/run-add-to-cart-test", async (req, res) => {
       }
     }
 
-    // Step 7: Go to Cart page safely
+    // Step 10: Go to Cart page
     const start6 = Date.now();
-    console.log("➡️ Going to Cart page...");
+    console.log("➡️ Navigating to Cart page...");
     await page.goto(`${baseUrl}/cart/`, { waitUntil: "domcontentloaded", timeout: 60000 });
     await page.waitForSelector(".wc-proceed-to-checkout a.checkout-button", { timeout: 15000 });
     results.push({ step: "Cart Page", success: true, loadTime: Date.now() - start6 });
     console.log("✅ Cart page loaded");
 
-    // Step 8: Proceed to Checkout
+    // Step 11: Proceed to Checkout
     const checkoutBtn = ".wc-proceed-to-checkout a.checkout-button";
     const start7 = Date.now();
     console.log("💳 Proceeding to Checkout...");
@@ -184,8 +214,8 @@ app.post("/run-add-to-cart-test", async (req, res) => {
     results.push({ step: "Checkout Page", success: true, loadTime: Date.now() - start7 });
     console.log("✅ Checkout loaded");
 
-    // Step 9: Fill checkout form
-    console.log("🧾 Filling checkout details...");
+    // Step 12: Fill checkout form
+    console.log("🧾 Filling billing details...");
     await page.fill("#billing_first_name", "Playwright");
     await page.fill("#billing_last_name", "Tester");
     await page.fill("#billing_company", "Brainbean Technolabs");
@@ -199,13 +229,13 @@ app.post("/run-add-to-cart-test", async (req, res) => {
     results.push({ step: "Filled Checkout Form", success: true });
     console.log("✅ Billing form filled");
 
-    // Step 10: Place Order
+    // Step 13: Place Order
     console.log("🧾 Placing the order...");
     const start10 = Date.now();
     await page.click("#place_order");
     await page.waitForLoadState("networkidle", { timeout: 30000 });
 
-    // Step 11: Wait for Thank You Page
+    // Step 14: Wait for Thank You Page
     let orderSuccess = false;
     try {
       await page.waitForSelector(".woocommerce-order-received", { timeout: 25000 });
@@ -221,7 +251,7 @@ app.post("/run-add-to-cart-test", async (req, res) => {
       loadTime: Date.now() - start10
     });
 
-    // Step 12: (Optional) Capture screenshot on success/failure
+    // Step 15: Screenshot for record
     const screenshot = await page.screenshot({ encoding: "base64", fullPage: true });
 
     await browser.close();
@@ -229,19 +259,18 @@ app.post("/run-add-to-cart-test", async (req, res) => {
     res.json({
       success: orderSuccess,
       site: baseUrl,
-      flow: "Add to Cart → Checkout → Place Order",
+      flow: "Login → Add to Cart → Checkout → Place Order",
       timestamp: new Date().toISOString(),
       results,
       screenshot: `data:image/png;base64,${screenshot}`
     });
 
   } catch (err) {
-    console.error("❌ Add-to-cart flow failed:", err);
+    console.error("❌ Flow failed:", err);
     results.push({ step: "Error", success: false, error: err.message });
     res.status(500).json({ success: false, results });
   }
 });
-
 
 
 
