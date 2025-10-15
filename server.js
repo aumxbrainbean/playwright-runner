@@ -101,7 +101,7 @@ app.post("/run-brainbean-test", async (req, res) => {
 });
 
 
-// ✅ WooCommerce Add-to-Cart Flow Test (Stable Version)
+// ✅ WooCommerce Add-to-Cart → Checkout → Place Order Flow Test
 app.post("/run-add-to-cart-test", async (req, res) => {
   const baseUrl = "https://playwright.dev.brainbean.us";
   const results = [];
@@ -179,26 +179,69 @@ app.post("/run-add-to-cart-test", async (req, res) => {
     const start7 = Date.now();
     console.log("💳 Proceeding to Checkout...");
     await page.click(checkoutBtn);
-    await page.waitForURL(/\/checkout/, { timeout: 10000 });
-    await page.waitForSelector("form.checkout", { timeout: 10000 });
+    await page.waitForURL(/\/checkout/, { timeout: 15000 });
+    await page.waitForSelector("form.checkout", { timeout: 15000 });
     results.push({ step: "Checkout Page", success: true, loadTime: Date.now() - start7 });
     console.log("✅ Checkout loaded");
+
+    // Step 9: Fill checkout form
+    console.log("🧾 Filling checkout details...");
+    await page.fill("#billing_first_name", "Playwright");
+    await page.fill("#billing_last_name", "Tester");
+    await page.fill("#billing_company", "Brainbean Technolabs");
+    await page.selectOption("#billing_country", "US");
+    await page.fill("#billing_address_1", "123 Automation Street");
+    await page.fill("#billing_city", "New York");
+    await page.selectOption("#billing_state", "NY");
+    await page.fill("#billing_postcode", "10001");
+    await page.fill("#billing_phone", "9999999999");
+    await page.fill("#billing_email", "playwright@brainbean.in");
+    results.push({ step: "Filled Checkout Form", success: true });
+    console.log("✅ Billing form filled");
+
+    // Step 10: Place Order
+    console.log("🧾 Placing the order...");
+    const start10 = Date.now();
+    await page.click("#place_order");
+    await page.waitForLoadState("networkidle", { timeout: 30000 });
+
+    // Step 11: Wait for Thank You Page
+    let orderSuccess = false;
+    try {
+      await page.waitForSelector(".woocommerce-order-received", { timeout: 25000 });
+      orderSuccess = true;
+      console.log("🎉 Order successfully placed — Thank You page reached!");
+    } catch (err) {
+      console.warn("⚠️ Thank You page not detected:", err.message);
+    }
+
+    results.push({
+      step: "Order Confirmation",
+      success: orderSuccess,
+      loadTime: Date.now() - start10
+    });
+
+    // Step 12: (Optional) Capture screenshot on success/failure
+    const screenshot = await page.screenshot({ encoding: "base64", fullPage: true });
 
     await browser.close();
 
     res.json({
-      success: true,
+      success: orderSuccess,
       site: baseUrl,
-      flow: "Add to Cart → Checkout",
+      flow: "Add to Cart → Checkout → Place Order",
       timestamp: new Date().toISOString(),
-      results
+      results,
+      screenshot: `data:image/png;base64,${screenshot}`
     });
+
   } catch (err) {
     console.error("❌ Add-to-cart flow failed:", err);
     results.push({ step: "Error", success: false, error: err.message });
     res.status(500).json({ success: false, results });
   }
 });
+
 
 
 
