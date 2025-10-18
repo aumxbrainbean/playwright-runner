@@ -124,7 +124,7 @@ app.post("/run-add-to-cart-test", async (req, res) => {
     console.log("🔐 Navigating to My Account page...");
     const startLogin = Date.now();
     await page.goto(`${baseUrl}/my-account/`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("form.woocommerce-form-login", { timeout: 10000 });
+    await page.waitForSelector("form.woocommerce-form-login", { timeout: 100000 });
 
     // Step 3: Fill login form
     console.log("🧾 Filling login credentials...");
